@@ -141,5 +141,5 @@ Distribution checks build a wheel/source archive and exercise a freshly
 installed wheel from outside the checkout. Source development is independent
 of package publication.
 
-[Roadmap](https://github.com/outside-labs/expose_protocol/issues/1)
-and [Project](https://github.com/orgs/outside-labs/projects/8) track development.
+[Roadmap](https://github.com/wispsy/expose_protocol/issues/1)
+and [Project](https://github.com/orgs/wispsy/projects/8) track development.

@@ -152,6 +152,6 @@ remain part of the program's behavior. Files may change after checks, so this
 package does not sandbox programs or secure a hostile local filesystem.
 
 Pretty Notebook's notebook identity and allowed note actions belong to a
-consumer adapter. [APP-01](https://github.com/outside-labs/pretty-notebook/issues/57)
+consumer adapter. [APP-01](https://github.com/wispsy/pretty-notebook/issues/57)
 remains that separate adoption gate. Legacy handlers are unsupported by this
 URI contract; link producers must generate the canonical validated format.

@@ -13,8 +13,8 @@ dependencies = []
 expose-protocol = "expose_protocol:main"
 
 [project.urls]
-Source = "https://github.com/outside-labs/expose_protocol"
-Issues = "https://github.com/outside-labs/expose_protocol/issues"
+Source = "https://github.com/wispsy/expose_protocol"
+Issues = "https://github.com/wispsy/expose_protocol/issues"
 
 [build-system]
 requires = ["uv_build>=0.12.19,<0.13.0"]

@@ -29,7 +29,7 @@ bundle_main(resources / "manifest.json", sys.argv[1:])
 
 def bundle_identifier(scheme: str) -> str:
     digest = hashlib.sha256(scheme.encode("ascii")).hexdigest()[:24]
-    return f"net.outside-labs.expose-protocol.{digest}"
+    return f"net.wispsy.expose-protocol.{digest}"
 
 
 def _applescript_string(value: str) -> str:

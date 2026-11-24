@@ -1,8 +1,10 @@
 [project]
 name = "expose-protocol"
-version = "0.1.0"
+version = "0.1.1"
 description = "Expose local programs through validated macOS URL schemes."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE.md"]
 authors = [
     { name = "ellainng", email = "299958882+ellainng@users.noreply.github.com" }
 ]
@@ -19,3 +21,6 @@ Issues = "https://github.com/wispsy/expose_protocol/issues"
 [build-system]
 requires = ["uv_build>=0.12.19,<0.13.0"]
 build-backend = "uv_build"
+
+[tool.uv.build-backend]
+source-include = ["tests/*.py", "scripts/*.py", "examples/*", "docs/*.md"]

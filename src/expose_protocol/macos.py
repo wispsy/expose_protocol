@@ -27,9 +27,14 @@ bundle_main(resources / "manifest.json", sys.argv[1:])
 '''
 
 
-def bundle_identifier(scheme: str) -> str:
+def bundle_identifiers(scheme: str) -> tuple[str, str]:
     digest = hashlib.sha256(scheme.encode("ascii")).hexdigest()[:24]
-    return f"net.wispsy.expose-protocol.{digest}"
+    return (f"net.wispsy.expose-protocol.{digest}",
+            f"net.outside-labs.expose-protocol.{digest}")
+
+
+def bundle_identifier(scheme: str) -> str:
+    return bundle_identifiers(scheme)[0]
 
 
 def _applescript_string(value: str) -> str:
@@ -117,7 +122,7 @@ def bundle_main(manifest: Path, arguments: list[str]) -> None:
         raise SystemExit(1 if isinstance(exc, LaunchError) else 2) from None
 
 
-def app_scheme(path: str | Path) -> str:
+def _app_identity(path: str | Path) -> tuple[str, str]:
     """Recognize identity even after a root or interpreter has been removed."""
     path = Path(path)
     if path.is_symlink() or not path.is_dir() or path.suffix != ".app":
@@ -131,22 +136,27 @@ def app_scheme(path: str | Path) -> str:
             raise DefinitionError("application plist must be a dictionary")
         manifest = _manifest_data(path / "Contents/Resources/manifest.json")
         scheme = manifest["protocol"]["scheme"]
-        identifier = bundle_identifier(scheme)
+        identifier = info.get("CFBundleIdentifier")
         expected_types = [[{"CFBundleTypeRole": role, "CFBundleURLName": identifier,
                             "CFBundleURLSchemes": [scheme]}] for role in ("Viewer", "Shell")]
         if (type(info.get("ExposeProtocolSchema")) is not int
                 or info.get("ExposeProtocolSchema") != BUNDLE_FORMAT
-                or info.get("CFBundleIdentifier") != identifier
+                or identifier not in bundle_identifiers(scheme)
                 or info.get("CFBundleURLTypes") not in expected_types
                 or info.get("CFBundleExecutable") != "applet"
                 or not (path / "Contents/MacOS/applet").is_file()
                 or (path / "Contents/Resources/launcher.py").read_text(encoding="utf-8") != APP_HELPER):
             raise DefinitionError("application identity or helper does not match its manifest")
-        return scheme
+        return scheme, identifier
     except (OSError, ValueError, TypeError, plistlib.InvalidFileException) as exc:
         if isinstance(exc, DefinitionError):
             raise
         raise DefinitionError(f"cannot inspect generated application: {exc}") from exc
+
+
+def app_scheme(path: str | Path) -> str:
+    """Recognize the exact current or legacy application identity."""
+    return _app_identity(path)[0]
 
 
 def inspect_app(path: str | Path) -> Protocol:
@@ -186,7 +196,7 @@ def build_app(protocol: Protocol, output: str | Path) -> Path:
                     del info[key]
             identifier = bundle_identifier(protocol.scheme)
             info.update(CFBundleIdentifier=identifier, CFBundleName=f"Expose Protocol ({protocol.scheme})",
-                        CFBundleShortVersionString="0.1.0", CFBundleVersion="1",
+                        CFBundleShortVersionString="0.1.1", CFBundleVersion="1",
                         CFBundleURLTypes=[{"CFBundleTypeRole": "Viewer", "CFBundleURLName": identifier,
                                            "CFBundleURLSchemes": [protocol.scheme]}],
                         ExposeProtocolSchema=BUNDLE_FORMAT, OSAAppletShowStartupScreen=False)

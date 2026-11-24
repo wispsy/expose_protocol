@@ -16,9 +16,17 @@ invoke `expose-protocol` directly in place of `uv run expose-protocol`.
 ## Releases
 
 Publish a GitHub release with a tag matching the package version, such as
-`v0.1.0`. `.github/workflows/release.yaml` tests and verifies the distributions
+`v0.1.1`. `.github/workflows/release.yaml` tests and verifies the distributions
 before publishing to PyPI through the `pypi` environment using Trusted Publishing.
-The workflow can also be run manually against an existing release tag.
+The release event is the single publication trigger. The exact wheel/sdist pair
+is qualified before upload and retained with SHA256/byte-size receipts.
+
+Version 0.1.1 creates apps with the Wispsy bundle identity while recognizing
+signed 0.1.0 apps and their matching installation receipts. Explicit replacement
+upgrades an existing managed app without requiring foreign-handler takeover;
+removal and failed-update recovery preserve its original handler. Unrelated
+or mismatched app/receipt identities remain refused.
+See [release qualification](docs/releasing.md).
 
 ## Usage
 

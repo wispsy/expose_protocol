@@ -8,7 +8,7 @@ import uuid
 
 from expose_protocol import DefinitionError, LaunchError, install, uninstall
 from expose_protocol.lifecycle import _same_app
-from expose_protocol.macos import bundle_identifier, app_scheme
+from expose_protocol.macos import bundle_identifier, bundle_identifiers, app_scheme
 from expose_protocol.services import DefaultHandler, get_handler, register_app, unregister_app, LSREGISTER
 from support import ProtocolTestCase
 import test_macos
@@ -44,7 +44,7 @@ class LifecycleTests(ProtocolTestCase):
 
     def select(self, scheme, identifier):
         self.events.append(("select", identifier))
-        path = self.app if identifier == bundle_identifier(scheme) else self.root / "Foreign.app"
+        path = self.app if identifier in bundle_identifiers(scheme) else self.root / "Foreign.app"
         self.handler = DefaultHandler(identifier, path)
 
     def test_install_and_removal_restore_previous_handler(self):
@@ -60,6 +60,53 @@ class LifecycleTests(ProtocolTestCase):
         self.assertFalse(self.receipt.exists())
         self.assertEqual(self.handler.bundle_id, "org.example.foreign")
         self.assertFalse(list(self.apps.glob(".*lock")))
+
+    def install_legacy(self):
+        legacy = bundle_identifiers("test-editor")[1]
+        self.handler = DefaultHandler("org.example.foreign", self.root / "Foreign.app")
+        with patch("expose_protocol.macos.bundle_identifier", return_value=legacy), patch(
+                "expose_protocol.lifecycle.bundle_identifier", return_value=legacy):
+            install(self.protocol(), directory=self.apps, takeover=True)
+        return legacy
+
+    def test_legacy_update_keeps_the_original_previous_handler(self):
+        self.install_legacy()
+        install(self.protocol(action="edit"), directory=self.apps, replace=True)
+        metadata = json.loads(self.receipt.read_text())
+        self.assertEqual(metadata["bundle_id"], bundle_identifier("test-editor"))
+        self.assertEqual(metadata["previous_handler"], "org.example.foreign")
+        uninstall("test-editor", directory=self.apps)
+        self.assertEqual(self.handler.bundle_id, "org.example.foreign")
+
+    def test_legacy_removal_and_mismatched_receipt_refusal(self):
+        legacy = self.install_legacy()
+        original = self.receipt.read_text()
+        wrong = json.loads(original) | {"bundle_id": bundle_identifier("test-editor")}
+        self.receipt.write_text(json.dumps(wrong))
+        with self.assertRaises(DefinitionError):
+            uninstall("test-editor", directory=self.apps)
+        self.assertTrue(self.app.exists())
+        self.receipt.write_text(original)
+        self.assertEqual(self.handler.bundle_id, legacy)
+        uninstall("test-editor", directory=self.apps)
+        self.assertFalse(self.app.exists())
+        self.assertEqual(self.handler.bundle_id, "org.example.foreign")
+
+    def test_failed_legacy_update_restores_identity_and_receipt(self):
+        legacy = self.install_legacy()
+        original = self.receipt.read_bytes()
+        calls = 0
+        def register(app):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise LaunchError("registration failed")
+            self.register(app)
+        with patch("expose_protocol.lifecycle.register_app", side_effect=register), self.assertRaises(LaunchError):
+            install(self.protocol(action="edit"), directory=self.apps, replace=True)
+        self.assertEqual(self.receipt.read_bytes(), original)
+        self.assertEqual(app_scheme(self.app), "test-editor")
+        self.assertEqual(self.handler, DefaultHandler(legacy, self.app))
 
     def test_update_is_explicit_and_preserves_original_default(self):
         self.handler = DefaultHandler("org.example.foreign", self.root / "Foreign.app")
@@ -273,14 +320,25 @@ class ServiceReadTests(ProtocolTestCase):
     def test_native_lifecycle_on_disposable_macos_runner(self):
         if sys.platform != "darwin" or os.environ.get("EXPOSE_PROTOCOL_NATIVE_LIFECYCLE") != "1":
             self.skipTest("explicit opt-in on disposable macOS runner only")
-        scheme = "expose-test-" + uuid.uuid4().hex
-        protocol = self.protocol(scheme=scheme)
-        directory = Path.home() / "Applications/Expose Protocol"
-        app = install(protocol, directory=directory)
-        try:
-            self.assertEqual(get_handler(scheme), DefaultHandler(bundle_identifier(scheme), app))
-            install(self.protocol(scheme=scheme, action="edit"), directory=directory, replace=True)
-        finally:
-            uninstall(scheme, directory=directory)
-        self.assertFalse(app.exists())
-        self.assertIsNone(get_handler(scheme).path)
+        for legacy_install in (False, True):
+            with self.subTest(legacy_install=legacy_install):
+                scheme = "expose-test-" + uuid.uuid4().hex
+                protocol = self.protocol(scheme=scheme)
+                directory = Path.home() / "Applications/Expose Protocol"
+                if legacy_install:
+                    legacy = bundle_identifiers(scheme)[1]
+                    with patch("expose_protocol.macos.bundle_identifier", return_value=legacy), patch(
+                            "expose_protocol.lifecycle.bundle_identifier", return_value=legacy):
+                        app = install(protocol, directory=directory)
+                    expected = legacy
+                else:
+                    app = install(protocol, directory=directory)
+                    expected = bundle_identifier(scheme)
+                try:
+                    self.assertEqual(get_handler(scheme), DefaultHandler(expected, app))
+                    install(self.protocol(scheme=scheme, action="edit"), directory=directory, replace=True)
+                    self.assertEqual(get_handler(scheme), DefaultHandler(bundle_identifier(scheme), app))
+                finally:
+                    uninstall(scheme, directory=directory)
+                self.assertFalse(app.exists())
+                self.assertIsNone(get_handler(scheme).path)

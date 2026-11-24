@@ -11,7 +11,7 @@ import time
 from .definitions import Protocol, has_control, validate_scheme
 from .errors import DefinitionError, LaunchError, ProtocolError
 from .launchers import require_macos
-from .macos import BUNDLE_FORMAT, app_scheme, build_app, bundle_identifier, run_native
+from .macos import BUNDLE_FORMAT, _app_identity, build_app, bundle_identifier, run_native
 from .services import get_handler, register_app, set_handler, unregister_app
 
 
@@ -67,7 +67,8 @@ def _lock(directory: Path, scheme: str):
 def _managed(app: Path, receipt: Path, scheme: str) -> dict:
     if app.is_symlink() or receipt.is_symlink():
         raise DefinitionError("managed app and receipt must not be symlinks")
-    if app_scheme(app) != scheme:
+    actual_scheme, identifier = _app_identity(app)
+    if actual_scheme != scheme:
         raise DefinitionError("managed application scheme does not match its path")
     try:
         if receipt.stat().st_size > 4096:
@@ -75,7 +76,7 @@ def _managed(app: Path, receipt: Path, scheme: str) -> dict:
         data = json.loads(receipt.read_text(encoding="utf-8"))
         if (not isinstance(data, dict) or set(data) != {"format", "scheme", "bundle_id", "previous_handler"}
                 or type(data["format"]) is not int or data["format"] != BUNDLE_FORMAT
-                or data["scheme"] != scheme or data["bundle_id"] != bundle_identifier(scheme)):
+                or data["scheme"] != scheme or data["bundle_id"] != identifier):
             raise DefinitionError("installation receipt does not match the application")
         previous = data["previous_handler"]
         if previous is not None and (not isinstance(previous, str) or not previous
@@ -104,7 +105,8 @@ def install(protocol: Protocol, *, directory: str | Path | None = None,
             raise DefinitionError("orphaned or symlinked installation receipt; inspect it before proceeding")
         old_receipt = _managed(app, receipt, scheme) if exists else None
         original = get_handler(scheme)
-        foreign = (original.bundle_id is not None or original.path is not None) and (original.bundle_id != identifier or not _same_app(original.path, app))
+        managed_identifier = old_receipt["bundle_id"] if old_receipt else identifier
+        foreign = (original.bundle_id is not None or original.path is not None) and (original.bundle_id != managed_identifier or not _same_app(original.path, app))
         if foreign and not takeover:
             raise LaunchError(f"scheme already has a handler ({original.bundle_id or original.path}); use --takeover to explicitly replace it")
         previous = original.bundle_id if foreign else (old_receipt["previous_handler"] if old_receipt else original.bundle_id)
